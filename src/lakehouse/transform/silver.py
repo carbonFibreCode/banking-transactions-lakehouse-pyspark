@@ -120,12 +120,10 @@ def build_transactions(
 
     txns = standardise_codes(bronze, ["currency", "channel", "status"])
 
-    # 1. Duplicates inside this batch (e.g. the source replayed a file).
     deduped, dup_in_batch = dedupe_latest(
         txns, ["txn_id"], [F.col("_ingest_ts").desc(), F.col("_source_file")]
     )
 
-    # 2. Duplicates of transactions already published by earlier batches (late replays).
     silver_path = cfg.path("silver", "transactions")
     existing = read_table(spark, silver_path)
     dup_cross_batch = deduped.limit(0)
@@ -139,7 +137,6 @@ def build_transactions(
 
     duplicates = dup_in_batch.unionByName(dup_cross_batch)
 
-    # 3. Quality checks against the reference data.
     refs = {name: read_table(spark, cfg.path("silver", name)) for name in ("accounts", "merchants")}
     outcome = apply_quality(
         deduped,
@@ -148,7 +145,6 @@ def build_transactions(
         refs={k: v for k, v in refs.items() if v is not None},
     )
 
-    # 4. Enrich and publish.
     silver = convert_to_gbp(spark, outcome.valid, cfg.fx_rates).withColumn("txn_date", F.to_date("txn_ts"))
     write_table(silver, silver_path, partition_by=["ingest_date"])
     write_table(outcome.quarantined, cfg.path("quarantine", "transactions"), partition_by=["ingest_date"])
@@ -156,7 +152,6 @@ def build_transactions(
     _write_dq(spark, cfg, outcome, batch_id, run_date)
     outcome.release()
 
-    # 5. Reconcile what was written (re-read from storage, not the in-memory plan).
     def _written(table: str) -> DataFrame:
         return spark.read.parquet(cfg.path(*table.split(":"))).where(F.col("ingest_date") == run_date)
 

@@ -13,11 +13,7 @@ def shift_date(run_date: str, days: int) -> str:
 
 
 def dedupe_latest(df: DataFrame, keys: list[str], order_by: list[Column]) -> tuple[DataFrame, DataFrame]:
-    """Keep the latest row per business key. Returns (kept, duplicates).
-
-    Rows with a null key are never treated as duplicates of each other; they flow on to the
-    quality checks, which quarantine them with an explicit reason.
-    """
+    """Keep the latest row per business key. Returns (kept, duplicates)."""
     null_key = F.lit(False)
     for k in keys:
         null_key = null_key | F.col(k).isNull()
@@ -33,19 +29,13 @@ def standardise_codes(df: DataFrame, columns: list[str]) -> DataFrame:
 
 
 def mask_pii(df: DataFrame, pii: dict[str, list[str]]) -> DataFrame:
-    """Hash, mask, or drop PII columns as declared in config.
-
-    hash -> <col>_hash  : SHA-256 of the normalised value. Still joinable, not readable.
-    mask -> <col>_masked: all but the last 4 characters replaced.
-    drop -> removed.
-    """
+    """Hash, mask, or drop PII columns as declared in config."""
     for c in pii.get("hash", []):
         df = df.withColumn(f"{c}_hash", F.sha2(F.lower(F.trim(F.col(c))), 256)).drop(c)
     for c in pii.get("mask", []):
         df = df.withColumn(
             f"{c}_masked",
             F.when(F.col(c).isNull(), None).otherwise(
-                # SQL expression keeps this compatible with Spark 3.5 (AWS Glue 5.0)
                 F.expr(f"concat(repeat('*', greatest(length(`{c}`) - 4, 0)), right(`{c}`, 4))")
             ),
         ).drop(c)
@@ -65,12 +55,7 @@ def convert_to_gbp(spark: SparkSession, df: DataFrame, fx_rates: dict[str, float
 def salted_join(
     left: DataFrame, right: DataFrame, key: str, salt_buckets: int = 16, how: str = "inner"
 ) -> DataFrame:
-    """Join on a heavily skewed key by spreading each hot key over `salt_buckets` partitions.
-
-    The large (skewed) side gets a random salt; the smaller side is replicated once per salt
-    value. AQE's skew-join handling usually covers this in Spark 3+/4, but explicit salting
-    is still needed for aggregations on skewed keys and for engines without AQE.
-    """
+    """Join on a heavily skewed key by spreading each hot key over `salt_buckets` partitions."""
     salted_left = left.withColumn("__salt", (F.rand(seed=42) * salt_buckets).cast("int"))
     salted_right = right.withColumn("__salt", F.explode(F.sequence(F.lit(0), F.lit(salt_buckets - 1))))
     return salted_left.join(salted_right, [key, "__salt"], how).drop("__salt")

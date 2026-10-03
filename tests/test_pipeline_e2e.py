@@ -1,5 +1,4 @@
-"""End-to-end: generate a small but messy dataset, run the full pipeline for several days,
-and check the guarantees the platform makes: completeness, uniqueness, idempotency, history."""
+"""End-to-end: generate a small but messy dataset, run the full pipeline for several days, and check the guarantees the platform makes: completeness, uniqueness, idempotency, history."""
 
 from datetime import date
 
@@ -17,8 +16,17 @@ def lake(spark, tmp_path_factory):
     from lakehouse.common.config import load_config
 
     cfg = load_config(base_path=str(tmp_path_factory.mktemp("e2e") / "lake"))
-    generate(spark, cfg.base_path, date(2026, 9, 1), days=3, txns_per_day=4000, n_customers=500,
-             n_accounts=800, n_merchants=50, partitions=2)  # fmt: skip
+    generate(
+        spark,
+        cfg.base_path,
+        date(2026, 9, 1),
+        days=3,
+        txns_per_day=4000,
+        n_customers=500,
+        n_accounts=800,
+        n_merchants=50,
+        partitions=2,
+    )
     for d in DAYS:
         run(spark, cfg, d)
     return cfg
@@ -44,7 +52,6 @@ def test_silver_transactions_are_unique_and_clean(spark, lake):
     silver = _read(spark, lake, "silver", "transactions")
     assert silver.count() == silver.select("txn_id").distinct().count()
     assert silver.where("amount <= 0 OR currency NOT IN ('GBP','USD','EUR','INR')").count() == 0
-    # cross-day replays were caught, not just in-file duplicates
     dups = _read(spark, lake, "quarantine", "transactions_duplicates")
     assert (
         dups.where(
@@ -70,7 +77,7 @@ def test_customer_dimension_has_one_current_row_and_no_raw_pii(spark, lake):
     dim = _read(spark, lake, "silver", "customers_scd2")
     current = dim.where("is_current")
     assert current.count() == current.select("customer_id").distinct().count()
-    assert dim.where("NOT is_current").count() > 0  # history was kept
+    assert dim.where("NOT is_current").count() > 0
     assert not {"email", "phone", "first_name", "last_name"} & set(dim.columns)
 
 
@@ -78,9 +85,13 @@ def test_rerun_is_idempotent(spark, lake):
     def snapshot():
         return {
             t: _read(spark, lake, layer, t).count()
-            for layer, t in [("silver", "transactions"), ("silver", "customers_scd2"),
-                             ("gold", "customer_daily_spend"), ("gold", "txn_fraud_features")]
-        }  # fmt: skip
+            for layer, t in [
+                ("silver", "transactions"),
+                ("silver", "customers_scd2"),
+                ("gold", "customer_daily_spend"),
+                ("gold", "txn_fraud_features"),
+            ]
+        }
 
     before = snapshot()
     run(spark, lake, DAYS[-1])

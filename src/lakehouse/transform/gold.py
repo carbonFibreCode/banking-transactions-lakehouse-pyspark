@@ -1,12 +1,4 @@
-"""Gold layer: business-ready aggregates and an ML feature table.
-
-* customer_daily_spend      - spend per customer per day, for reporting and BI
-* merchant_category_daily   - spend by merchant category per day
-* txn_fraud_features        - per-transaction behavioural features for the fraud model
-
-Late-arriving transactions are handled by recomputing every txn_date that the current batch
-touched, so gold always reflects all data received so far.
-"""
+"""Gold layer: business-ready aggregates and an ML feature table."""
 
 from __future__ import annotations
 
@@ -37,7 +29,6 @@ def _touched_txns(spark: SparkSession, cfg: PipelineConfig, run_date: str) -> tu
     ]
     if not touched:
         return txns.limit(0), []
-    # A transaction is always ingested on or after its txn_date, so this scan is complete.
     window = txns.where((F.col("ingest_date") >= min(touched)) & (F.col("ingest_date") <= run_date))
     affected = window.where(F.date_format("txn_date", "yyyy-MM-dd").isin(touched)).where(
         F.col("status") == "COMPLETED"
@@ -46,7 +37,6 @@ def _touched_txns(spark: SparkSession, cfg: PipelineConfig, run_date: str) -> tu
 
 
 def build_customer_daily_spend(txns: DataFrame, accounts: DataFrame) -> DataFrame:
-    # Accounts is a small dimension: broadcasting avoids shuffling the transaction fact table.
     acct = F.broadcast(accounts.select("account_id", "customer_id"))
     return (
         txns.join(acct, "account_id")
@@ -84,8 +74,7 @@ def build_merchant_category_daily(txns: DataFrame, merchants: DataFrame) -> Data
 
 
 def build_fraud_features(history: DataFrame, lookback_days: int) -> DataFrame:
-    """Behavioural features per transaction, computed only from that account's PRIOR activity
-    (no look-ahead), so the same features can be used for training and real-time scoring."""
+    """Behavioural features per transaction, computed only from that account's PRIOR activity (no look-ahead), so the same features can be used for training and real-time scoring."""
     ts = F.col("txn_ts").cast("long")
     by_account = Window.partitionBy("account_id").orderBy(ts)
     last_1h = by_account.rangeBetween(-3600, -1)
@@ -95,7 +84,13 @@ def build_fraud_features(history: DataFrame, lookback_days: int) -> DataFrame:
 
     avg_lookback = F.avg("amount_gbp").over(lookback)
     return history.select(
-        "txn_id", "account_id", "merchant_id", "txn_ts", "amount_gbp", "channel", "ingest_date",
+        "txn_id",
+        "account_id",
+        "merchant_id",
+        "txn_ts",
+        "amount_gbp",
+        "channel",
+        "ingest_date",
         F.count(F.lit(1)).over(last_1h).alias("txn_count_prev_1h"),
         F.count(F.lit(1)).over(last_24h).alias("txn_count_prev_24h"),
         F.coalesce(F.sum("amount_gbp").over(last_24h), F.lit(0)).alias("spend_prev_24h_gbp"),
@@ -105,7 +100,7 @@ def build_fraud_features(history: DataFrame, lookback_days: int) -> DataFrame:
         (F.row_number().over(first_seen) == 1).alias("is_first_txn_at_merchant"),
         F.hour("txn_ts").between(0, 5).alias("is_night_txn"),
         (F.col("currency") != "GBP").alias("is_foreign_currency"),
-    )  # fmt: skip
+    )
 
 
 def build_gold(spark: SparkSession, cfg: PipelineConfig, run_date: str, metrics: StageMetrics) -> None:

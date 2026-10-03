@@ -1,10 +1,4 @@
-"""Generic, config-driven bronze ingestion.
-
-One function onboards every source: it reads the landing folder for a run date using the
-declared schema (no schema inference in production), keeps malformed records instead of
-dropping them, stamps lineage columns, and writes to bronze partitioned by ingest_date.
-Re-running the same date replaces only that partition, so the job is idempotent.
-"""
+"""Generic, config-driven bronze ingestion."""
 
 from __future__ import annotations
 
@@ -29,7 +23,7 @@ def read_landing(spark: SparkSession, cfg: PipelineConfig, source: str, run_date
     )
     try:
         return reader.load(path)
-    except Exception as exc:  # AnalysisException for a missing folder
+    except Exception as exc:
         if "PATH_NOT_FOUND" in str(exc) or "Path does not exist" in str(exc):
             return None
         raise
@@ -55,7 +49,6 @@ def ingest_source(
     corrupt = bronze.where(F.col(CORRUPT_COL).isNotNull())
     corrupt_count = corrupt.count()
 
-    # Unparseable rows are kept in a quarantine table for investigation, never silently dropped.
     if corrupt_count:
         write_table(corrupt, cfg.path("quarantine", f"{source}_unparseable"), partition_by=["ingest_date"])
 

@@ -1,7 +1,4 @@
-"""Print the control tables for a run: stage audit, data quality results, reconciliation.
-
-python scripts/show_audit.py --run-date 2026-10-01
-"""
+"""Print the control tables for a run: stage audit, data quality results, reconciliation."""
 
 from __future__ import annotations
 
@@ -28,16 +25,29 @@ def main() -> None:
         df.select(*cols).orderBy(order).show(100, truncate=False)
 
     show(
-        "pipeline_runs", "stage", "dataset", "status", "rows_in", "rows_out", "rows_quarantined", "duration_s",
+        "pipeline_runs",
+        "stage",
+        "dataset",
+        "status",
+        "rows_in",
+        "rows_out",
+        "rows_quarantined",
+        "duration_s",
         order="logged_at",
-    )  # fmt: skip
+    )
     show(
         "dq_results", "dataset", "rule", "severity", "failed_rows", "total_rows", "pass_rate", order="dataset"
     )
     show(
-        "reconciliation", "dataset", "source_rows", "target_rows", "source_amount", "target_amount", "balanced",
+        "reconciliation",
+        "dataset",
+        "source_rows",
+        "target_rows",
+        "source_amount",
+        "target_amount",
+        "balanced",
         order="dataset",
-    )  # fmt: skip
+    )
     spark.stop()
 
 

@@ -1,9 +1,4 @@
-"""Source-to-target reconciliation.
-
-Every bronze row for a batch must be accounted for in exactly one place: published to
-silver, quarantined, or dropped as a duplicate. Row counts and monetary totals must
-both balance; if they don't, the batch is failed rather than silently losing money.
-"""
+"""Source-to-target reconciliation."""
 
 from __future__ import annotations
 
@@ -32,9 +27,15 @@ class ReconciliationResult:
 
     def as_row(self, batch_id: str, run_date: str) -> tuple:
         return (
-            batch_id, run_date, self.dataset, self.source_rows, self.target_rows,
-            str(self.source_amount), str(self.target_amount), self.balanced,
-        )  # fmt: skip
+            batch_id,
+            run_date,
+            self.dataset,
+            self.source_rows,
+            self.target_rows,
+            str(self.source_amount),
+            str(self.target_amount),
+            self.balanced,
+        )
 
 
 RECON_SCHEMA = (

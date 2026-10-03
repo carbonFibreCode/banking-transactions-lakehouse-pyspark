@@ -11,12 +11,12 @@ SCHEMA = "txn_id STRING, account_id STRING, amount DECIMAL(18,2), currency STRIN
 def _txns(spark):
     return spark.createDataFrame(
         [
-            ("T1", "A1", Decimal("10.00"), "GBP"),  # valid
-            ("T2", None, Decimal("5.00"), "GBP"),  # null account
-            ("T3", "A1", Decimal("-1.00"), "GBP"),  # negative
-            ("T4", "A1", Decimal("3.00"), "XXX"),  # bad currency
-            ("T5", "A9", Decimal("7.00"), "GBP"),  # orphan account
-            ("T6", "A2", Decimal("8.00"), "GBP"),  # valid
+            ("T1", "A1", Decimal("10.00"), "GBP"),
+            ("T2", None, Decimal("5.00"), "GBP"),
+            ("T3", "A1", Decimal("-1.00"), "GBP"),
+            ("T4", "A1", Decimal("3.00"), "XXX"),
+            ("T5", "A9", Decimal("7.00"), "GBP"),
+            ("T6", "A2", Decimal("8.00"), "GBP"),
         ],
         SCHEMA,
     )
@@ -27,12 +27,24 @@ RULES = {
     "rules": [
         {"name": "required", "type": "not_null", "columns": ["txn_id", "account_id"], "severity": "error"},
         {"name": "positive", "type": "range", "column": "amount", "min": 0.01, "severity": "error"},
-        {"name": "currency", "type": "accepted_values", "column": "currency", "values": ["GBP"], "severity": "error"},
-        {"name": "fk", "type": "foreign_key", "column": "account_id", "ref_table": "accounts",
-         "ref_column": "account_id", "severity": "error"},
+        {
+            "name": "currency",
+            "type": "accepted_values",
+            "column": "currency",
+            "values": ["GBP"],
+            "severity": "error",
+        },
+        {
+            "name": "fk",
+            "type": "foreign_key",
+            "column": "account_id",
+            "ref_table": "accounts",
+            "ref_column": "account_id",
+            "severity": "error",
+        },
         {"name": "big", "type": "expression", "expr": "amount < 9", "severity": "warn"},
     ],
-}  # fmt: skip
+}
 
 
 def test_rows_are_split_with_reasons(spark):
@@ -42,7 +54,6 @@ def test_rows_are_split_with_reasons(spark):
     assert sorted(r.txn_id for r in outcome.valid.collect()) == ["T1", "T6"]
     reasons = {r.txn_id: r[DQ_ERRORS] for r in outcome.quarantined.collect()}
     assert reasons == {"T2": ["required"], "T3": ["positive"], "T4": ["currency"], "T5": ["fk"]}
-    # validated output keeps the original schema
     assert outcome.valid.columns == _txns(spark).columns
 
 
@@ -69,10 +80,15 @@ def test_unique_and_regex_rules(spark):
     rules = {
         "rules": [
             {"name": "uniq", "type": "unique", "columns": ["id"], "severity": "error"},
-            {"name": "email", "type": "regex", "column": "email", "pattern": r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$",
-             "severity": "warn"},
+            {
+                "name": "email",
+                "type": "regex",
+                "column": "email",
+                "pattern": r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$",
+                "severity": "warn",
+            },
         ]
-    }  # fmt: skip
+    }
     outcome = apply_quality(df, "x", rules)
     assert [r.id for r in outcome.valid.collect()] == ["A2"]
     assert {r.rule: r.failed_rows for r in outcome.results} == {"uniq": 2, "email": 1}

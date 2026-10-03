@@ -1,25 +1,11 @@
-"""AWS Glue (PySpark) entry point.
-
-The Glue job is a thin wrapper: it resolves job arguments, reuses Glue's SparkSession, and
-calls the same `lakehouse.pipeline.run` that runs locally and in CI. The `lakehouse`
-package is shipped as a wheel via --additional-python-modules / --extra-py-files.
-
-Job parameters (set in infra/terraform/glue.tf):
-    --run_date     YYYY-MM-DD (defaults to yesterday, UTC)
-    --stage        all | bronze | silver_reference | silver_customers | silver_transactions | gold
-    --config_path  s3://<artifacts-bucket>/config/pipeline.yaml
-    --base_path    s3://<lake-bucket>
-
-Glue job bookmarks are disabled on purpose: incremental state is tracked by run_date
-partitions, which keeps reruns and backfills deterministic.
-"""
+"""AWS Glue (PySpark) entry point."""
 
 import sys
 from datetime import date, timedelta
 
-from awsglue.context import GlueContext  # type: ignore[import-not-found]
-from awsglue.job import Job  # type: ignore[import-not-found]
-from awsglue.utils import getResolvedOptions  # type: ignore[import-not-found]
+from awsglue.context import GlueContext
+from awsglue.job import Job
+from awsglue.utils import getResolvedOptions
 from pyspark.context import SparkContext
 
 from lakehouse.common.config import load_config

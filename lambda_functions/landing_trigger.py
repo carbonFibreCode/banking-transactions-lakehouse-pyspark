@@ -1,12 +1,4 @@
-"""S3 -> Lambda -> Glue: run the pipeline as soon as a day's transaction feed is complete.
-
-This is the event-driven alternative to the scheduled Airflow DAG: same Glue job, same
-idempotent stages, triggered by data arrival instead of the clock.
-
-Upstream writes files under landing/transactions/ingest_date=YYYY-MM-DD/ and finishes with a
-_SUCCESS marker. The bucket notification is filtered to that suffix, so this function fires
-once per delivered batch instead of once per file.
-"""
+"""S3 -> Lambda -> Glue: run the pipeline as soon as a day's transaction feed is complete."""
 
 from __future__ import annotations
 
@@ -43,7 +35,6 @@ def handler(event, _context):
                 Arguments={"--run_date": run_date, "--stage": "all"},
             )
         except glue.exceptions.ConcurrentRunsExceededException:
-            # A run for this job is already in progress. Let it fail so S3 retries the event.
             logger.warning(json.dumps({"msg": "glue busy, will retry", "run_date": run_date}))
             raise
         started.append({"run_date": run_date, "job_run_id": response["JobRunId"]})

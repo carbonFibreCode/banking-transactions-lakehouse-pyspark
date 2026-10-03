@@ -1,17 +1,4 @@
-"""Synthetic retail-banking data generator, built on Spark so it scales to tens of millions of rows.
-
-It writes realistic landing-zone files, including the defects a production feed actually has,
-so the quality, dedupe and reconciliation logic has something real to catch:
-
-* duplicate transactions within a file and replayed from the previous day
-* late-arriving transactions (event time 1-2 days before the delivery date)
-* nulls, negative amounts, unknown currencies, orphan account ids, untrimmed/lower-case codes
-* malformed JSON lines, invalid emails, accounts with an unknown type
-* one "hot" merchant taking ~25% of volume (data skew)
-* a daily customer change feed (address / segment changes and new customers) for SCD2
-
-    python -m lakehouse.generate.synthetic --days 3 --txns-per-day 1000000
-"""
+"""Synthetic retail-banking data generator, built on Spark so it scales to tens of millions of rows."""
 
 from __future__ import annotations
 
@@ -95,21 +82,30 @@ def customers(spark: SparkSession, n: int, as_of: date, seed: int, id_offset: in
         F.col("id"),
     )
     return df.select(
-        "customer_id", "first_name", "last_name",
-        # ~0.5% malformed emails: caught by a warn-level rule
+        "customer_id",
+        "first_name",
+        "last_name",
         F.when(F.rand(seed + 2) < 0.005, F.concat(F.lower("first_name"), F.lit(".at.example")))
-        .otherwise(F.concat(F.lower("first_name"), F.lit("."), F.lower("last_name"), F.col("id"), F.lit("@example.com")))
+        .otherwise(
+            F.concat(
+                F.lower("first_name"), F.lit("."), F.lower("last_name"), F.col("id"), F.lit("@example.com")
+            )
+        )
         .alias("email"),
-        F.concat(F.lit("07"), F.lpad((F.rand(seed + 3) * 1e9).cast("long").cast("string"), 9, "0")).alias("phone"),
+        F.concat(F.lit("07"), F.lpad((F.rand(seed + 3) * 1e9).cast("long").cast("string"), 9, "0")).alias(
+            "phone"
+        ),
         _pick(CITIES, seed + 4).alias("city"),
-        _weighted([("RETAIL", 0.8), ("PREMIER", 0.15), ("PRIVATE", 0.03), ("BUSINESS", 0.02)], seed + 5).alias("segment"),
+        _weighted(
+            [("RETAIL", 0.8), ("PREMIER", 0.15), ("PRIVATE", 0.03), ("BUSINESS", 0.02)], seed + 5
+        ).alias("segment"),
         F.lit(f"{as_of} 00:00:00").cast("timestamp").alias("updated_at"),
-    )  # fmt: skip
+    )
 
 
 def customer_changes(spark: SparkSession, n: int, day: date, day_index: int, seed: int) -> DataFrame:
     """~1% of existing customers change city/segment; ~0.2% brand-new customers."""
-    base = customers(spark, n, day, seed=7)  # same seed as day 0 -> same people
+    base = customers(spark, n, day, seed=7)
     changed = (
         base.where(F.rand(seed) < 0.01)
         .withColumn("city", _pick(CITIES, seed + 1))
@@ -150,7 +146,6 @@ def transactions(
     day_tag = day.strftime("%Y%m%d")
     start = F.lit(f"{day} 00:00:00").cast("timestamp")
     offset_s = (F.rand(seed) * 86_399).cast("int")
-    # ~2% of events arrive 1-2 days late
     late_days = F.when(F.rand(seed + 1) < 0.02, (F.rand(seed + 2) * 2).cast("int") + 1).otherwise(0)
     merchant = F.when(F.rand(seed + 3) < 0.25, F.lit(HOT_MERCHANT)).otherwise(
         _id("M", (F.rand(seed + 4) * n_merchants).cast("long") + 1, 7)
@@ -174,16 +169,14 @@ def transactions(
     d = F.col("__defect")
     df = df.select(
         "txn_id",
-        F.when(d < 0.0005, F.lit("A99999999")).otherwise(F.col("account_id")).alias("account_id"),  # orphan
+        F.when(d < 0.0005, F.lit("A99999999")).otherwise(F.col("account_id")).alias("account_id"),
         "merchant_id",
-        F.when(d.between(0.0005, 0.0015), None)  # null amount
-        .when(d.between(0.0015, 0.002), -F.col("amount"))  # negative amount
+        F.when(d.between(0.0005, 0.0015), None)
+        .when(d.between(0.0015, 0.002), -F.col("amount"))
         .otherwise(F.col("amount"))
         .alias("amount"),
-        F.when(d.between(0.002, 0.0025), F.lit("XXX"))  # unknown currency
-        .when(
-            d.between(0.0025, 0.0035), F.concat(F.lit(" "), F.lower("currency"), F.lit(" "))
-        )  # needs cleansing
+        F.when(d.between(0.002, 0.0025), F.lit("XXX"))
+        .when(d.between(0.0025, 0.0035), F.concat(F.lit(" "), F.lower("currency"), F.lit(" ")))
         .otherwise(F.col("currency"))
         .alias("currency"),
         "channel",
@@ -236,7 +229,6 @@ def generate(
             spark, txns_per_day, day, n_accounts, n_merchants, seed=1000 + i, partitions=partitions
         )
         if previous is not None:
-            # the source system replays a slice of yesterday's events
             txns = txns.unionByName(previous.where(F.rand(99) < 0.001))
         path = _dir("transactions", day)
         write_landing(txns, path, "json")
@@ -269,9 +261,16 @@ def main(argv: list[str] | None = None) -> None:
     )
     spark = get_spark("lakehouse-generate")
     generate(
-        spark, cfg.base_path, start, args.days, args.txns_per_day,
-        args.customers, args.accounts, args.merchants, args.partitions,
-    )  # fmt: skip
+        spark,
+        cfg.base_path,
+        start,
+        args.days,
+        args.txns_per_day,
+        args.customers,
+        args.accounts,
+        args.merchants,
+        args.partitions,
+    )
     print(f"Generated {args.days} day(s) from {start} under {cfg.base_path}/landing")
     spark.stop()
 

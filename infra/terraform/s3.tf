@@ -1,6 +1,3 @@
-# Lake bucket: landing/ bronze/ silver/ gold/ quarantine/ audit/ prefixes.
-# Artifacts bucket: the lakehouse wheel, Glue scripts, pipeline.yaml.
-
 resource "aws_s3_bucket" "lake" {
   bucket = "${local.prefix}-lake-${local.account_id}"
 }
@@ -45,7 +42,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "all" {
   }
 }
 
-# Deny any request that is not over TLS.
 data "aws_iam_policy_document" "tls_only" {
   for_each = local.buckets
   statement {
@@ -71,7 +67,6 @@ resource "aws_s3_bucket_policy" "tls_only" {
   policy   = data.aws_iam_policy_document.tls_only[each.key].json
 }
 
-# Retention: raw data moves to cheaper storage tiers; quarantine is kept for a year for investigation.
 resource "aws_s3_bucket_lifecycle_configuration" "lake" {
   bucket = aws_s3_bucket.lake.id
 

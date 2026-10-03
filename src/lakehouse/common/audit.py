@@ -1,9 +1,4 @@
-"""Structured logging and the audit trail.
-
-Every stage records one row per dataset in `audit/pipeline_runs`: who ran what, for which
-run date, how many rows went in/out/quarantined, and whether it succeeded. Logs are JSON so
-CloudWatch Logs Insights can query them directly.
-"""
+"""Structured logging and the audit trail."""
 
 from __future__ import annotations
 
@@ -91,15 +86,23 @@ def audited(spark: SparkSession, cfg: PipelineConfig, batch_id: str, run_date: s
     finally:
         duration = round(time.perf_counter() - started, 2)
         row = (
-            batch_id, run_date, stage, dataset, status,
-            metrics.rows_in, metrics.rows_out, metrics.rows_quarantined,
-            duration, error, datetime.now(timezone.utc).replace(tzinfo=None),
-        )  # fmt: skip
+            batch_id,
+            run_date,
+            stage,
+            dataset,
+            status,
+            metrics.rows_in,
+            metrics.rows_out,
+            metrics.rows_quarantined,
+            duration,
+            error,
+            datetime.now(timezone.utc).replace(tzinfo=None),
+        )
         try:
             spark.createDataFrame([row], AUDIT_SCHEMA).write.mode("append").parquet(
                 cfg.path("audit", "pipeline_runs")
             )
-        except Exception as audit_exc:  # never mask the original failure
+        except Exception as audit_exc:
             log.error("audit write failed", extra={"context": {**ctx, "audit_error": str(audit_exc)[:500]}})
         (log.error if error else log.info)(
             "stage finished",

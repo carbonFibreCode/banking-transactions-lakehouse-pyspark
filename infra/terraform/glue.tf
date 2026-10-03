@@ -1,7 +1,3 @@
-# ---------------------------------------------------------------------------
-# IAM: least privilege. The Glue role can read landing data and write only to the
-# layers it produces; it cannot delete from landing or touch other buckets.
-# ---------------------------------------------------------------------------
 data "aws_iam_policy_document" "glue_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -54,9 +50,6 @@ resource "aws_iam_role_policy" "glue_data" {
   policy = data.aws_iam_policy_document.glue_data.json
 }
 
-# ---------------------------------------------------------------------------
-# Glue job: the same code as local/CI, packaged as a wheel.
-# ---------------------------------------------------------------------------
 resource "aws_glue_job" "pipeline" {
   name              = "${local.prefix}-pipeline"
   role_arn          = aws_iam_role.glue.arn
@@ -73,7 +66,7 @@ resource "aws_glue_job" "pipeline" {
   }
 
   execution_property {
-    max_concurrent_runs = 1 # stages for consecutive days must not overlap
+    max_concurrent_runs = 1
   }
 
   default_arguments = {
@@ -92,7 +85,6 @@ resource "aws_glue_job" "pipeline" {
   }
 }
 
-# Gold tables registered in the Glue Data Catalog for Athena / BI.
 resource "aws_glue_catalog_database" "gold" {
   name = replace("${local.prefix}_gold", "-", "_")
 }

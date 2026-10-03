@@ -31,7 +31,6 @@ def test_mask_pii(spark):
     out = mask_pii(df, {"hash": ["email"], "mask": ["phone"], "drop": ["name"]}).first()
     assert out.asDict().keys() == {"id", "email_hash", "phone_masked"}
     assert out.phone_masked == "*******6789"
-    # hash is case/space-insensitive so the same customer still joins across systems
     assert out.email_hash == spark.sql("SELECT sha2('ann@example.com', 256)").first()[0]
 
 
@@ -69,13 +68,18 @@ def test_scd2_insert_update_unchanged_and_stale(spark):
 
     second = apply_scd2(
         dim,
-        _cust(spark, [
-            ("C1", "Pune", "h1b", t2),      # moved -> new version
-            ("C2", "Leeds", "h2", t1),      # same attributes -> no-op
-            ("C3", "Bristol", "h3", t1),    # new customer
-        ]),
-        "customer_id", "updated_at", "b2",
-    )  # fmt: skip
+        _cust(
+            spark,
+            [
+                ("C1", "Pune", "h1b", t2),
+                ("C2", "Leeds", "h2", t1),
+                ("C3", "Bristol", "h3", t1),
+            ],
+        ),
+        "customer_id",
+        "updated_at",
+        "b2",
+    )
     assert (second.inserted, second.updated, second.stale) == (1, 1, 0)
     out = rows(second.dimension, "customer_id", "city", "is_current", "effective_to")
     assert out == [
@@ -85,7 +89,6 @@ def test_scd2_insert_update_unchanged_and_stale(spark):
         ("C3", "Bristol", True, None),
     ]
 
-    # an out-of-order record older than the current version must not rewrite history
     third = apply_scd2(
         second.dimension.localCheckpoint(),
         _cust(spark, [("C1", "Chennai", "hx", t1)]),
@@ -117,5 +120,5 @@ def test_fraud_features_use_only_prior_activity(spark):
     assert f["T2"].txn_count_prev_1h == 1 and f["T2"].seconds_since_prev_txn == 1800
     assert f["T2"].is_first_txn_at_merchant is False
     assert f["T3"].txn_count_prev_1h == 0 and f["T3"].txn_count_prev_24h == 2
-    assert f["T3"].amount_to_avg_ratio == 5.0  # 100 vs average of 10 and 30
+    assert f["T3"].amount_to_avg_ratio == 5.0
     assert f["T3"].is_night_txn and f["T3"].is_first_txn_at_merchant

@@ -1,11 +1,4 @@
-"""Slowly Changing Dimension Type 2, implemented with plain DataFrame operations.
-
-Each business key has exactly one current row (is_current = true, effective_to = null). When
-a tracked attribute changes, the current row is closed at the change timestamp and a new
-version is opened. A change feed record older than the current version is ignored as stale,
-so out-of-order or replayed records cannot rewrite history. Re-applying the same feed is a
-no-op because unchanged hashes produce no new versions.
-"""
+"""Slowly Changing Dimension Type 2, implemented with plain DataFrame operations."""
 
 from __future__ import annotations
 

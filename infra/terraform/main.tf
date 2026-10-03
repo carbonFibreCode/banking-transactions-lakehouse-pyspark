@@ -26,9 +26,6 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
 }
 
-# ---------------------------------------------------------------------------
-# Encryption: one customer-managed key for the lake, with automatic rotation.
-# ---------------------------------------------------------------------------
 resource "aws_kms_key" "lake" {
   description             = "Encryption key for ${local.prefix} data lake"
   enable_key_rotation     = true

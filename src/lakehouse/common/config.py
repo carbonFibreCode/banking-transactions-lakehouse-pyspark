@@ -1,7 +1,4 @@
-"""Pipeline configuration loading.
-
-The YAML file can live on local disk or in S3 (as it does when the job runs in AWS Glue).
-"""
+"""Pipeline configuration loading."""
 
 from __future__ import annotations
 
@@ -52,7 +49,7 @@ class PipelineConfig:
 
 def _read_text(location: str) -> str:
     if location.startswith("s3://"):
-        import boto3  # only needed when running in AWS
+        import boto3
 
         bucket, _, key = location[len("s3://") :].partition("/")
         body = boto3.client("s3").get_object(Bucket=bucket, Key=key)["Body"]

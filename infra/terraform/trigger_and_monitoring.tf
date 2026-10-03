@@ -1,6 +1,3 @@
-# ---------------------------------------------------------------------------
-# Event-driven trigger: S3 _SUCCESS marker -> Lambda -> Glue job
-# ---------------------------------------------------------------------------
 data "archive_file" "lambda" {
   type        = "zip"
   source_file = "${path.module}/../../lambda_functions/landing_trigger.py"
@@ -77,11 +74,6 @@ resource "aws_s3_bucket_notification" "landing" {
   depends_on = [aws_lambda_permission.s3]
 }
 
-# ---------------------------------------------------------------------------
-# Alerting: any failed/timed-out Glue run -> SNS
-# ---------------------------------------------------------------------------
-# Unencrypted on purpose: EventBridge cannot publish to a topic encrypted with the AWS-managed
-# SNS key. Use a customer-managed key with an events.amazonaws.com grant if alerts carry data.
 resource "aws_sns_topic" "alerts" {
   name = "${local.prefix}-alerts"
 }
@@ -126,9 +118,6 @@ resource "aws_sns_topic_policy" "alerts" {
   policy = data.aws_iam_policy_document.sns_events.json
 }
 
-# ---------------------------------------------------------------------------
-# Audit: CloudTrail data events record every read/write on the lake bucket.
-# ---------------------------------------------------------------------------
 resource "aws_s3_bucket" "trail" {
   bucket = "${local.prefix}-cloudtrail-${local.account_id}"
 }

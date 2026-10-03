@@ -1,13 +1,4 @@
-"""Declarative, config-driven data quality framework.
-
-Each rule from the YAML config becomes a row-level check. All checks for a dataset are
-evaluated in a single pass, so cost does not grow with the number of rules. Each row gets a
-`_dq_errors` array naming the error-severity rules it failed:
-
-* rows with any error  -> quarantine table (with the reasons attached)
-* rows with only warns -> pass through, warnings counted in the DQ report
-* if the error rate exceeds `max_error_rate` -> DataQualityError, nothing is published
-"""
+"""Declarative, config-driven data quality framework."""
 
 from __future__ import annotations
 
@@ -77,7 +68,6 @@ def _failure_condition(
             cond = cond | (c < F.lit(rule["min"]))
         if "max" in rule:
             cond = cond | (c > F.lit(rule["max"]))
-        # nulls are the job of not_null rules, not range rules
         return df, F.coalesce(cond, F.lit(False))
 
     if rtype == "accepted_values":
@@ -134,8 +124,6 @@ def apply_quality(
     checked = df.select(
         *original_cols, _collect(error_flags).alias(DQ_ERRORS), _collect(warn_flags).alias(DQ_WARNINGS)
     )
-    # Cached because it feeds three outputs (stats, valid, quarantine); otherwise the source
-    # and every join would be recomputed for each.
     checked = checked.persist()
 
     agg_exprs = [

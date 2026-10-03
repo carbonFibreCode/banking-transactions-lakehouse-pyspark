@@ -1,15 +1,4 @@
-"""Daily lakehouse run, one task per pipeline stage.
-
-Each task calls the same CLI used locally, so the DAG holds no business logic. The task
-graph mirrors the data dependencies:
-
-    bronze -> silver_reference --+--> silver_transactions -> gold
-           -> silver_customers --+
-
-The reference and customer silver loads are independent and run in parallel. Every task is
-idempotent for a given {{ ds }}, so retries and backfills (`airflow dags backfill`) are safe.
-On AWS, swap the BashOperator for GlueJobOperator (see glue_jobs/) and nothing else changes.
-"""
+"""Daily lakehouse run, one task per pipeline stage."""
 
 from __future__ import annotations
 
@@ -17,9 +6,9 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 
-try:  # Airflow 3
+try:
     from airflow.providers.standard.operators.bash import BashOperator
-except ImportError:  # Airflow 2.x
+except ImportError:
     from airflow.operators.bash import BashOperator
 
 PIPELINE = "python -m lakehouse.pipeline"
@@ -36,9 +25,9 @@ with DAG(
     dag_id="banking_lakehouse_daily",
     description="Bronze -> Silver -> Gold for retail banking transactions",
     start_date=datetime(2026, 9, 1),
-    schedule="0 2 * * *",  # 02:00 UTC, after the upstream feeds land
+    schedule="0 2 * * *",
     catchup=False,
-    max_active_runs=1,  # SCD2 and cross-batch dedupe depend on the previous day
+    max_active_runs=1,
     default_args=default_args,
     tags=["lakehouse", "pyspark", "banking"],
 ) as dag:

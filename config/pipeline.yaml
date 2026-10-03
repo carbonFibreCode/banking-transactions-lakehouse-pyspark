@@ -1,9 +1,3 @@
-# Pipeline configuration. Adding a new source is a config change, not a code change:
-# declare it under `sources`, give it a load_type, and (optionally) quality rules.
-#
-# base_path can be a local folder or an S3 URI (s3://my-lake). Override at runtime with
-# the LAKEHOUSE_BASE_PATH environment variable or the --base-path CLI flag.
-
 base_path: data
 
 layers:
@@ -15,10 +9,7 @@ layers:
   audit: audit
 
 processing:
-  # How many days back a transaction may arrive late. Controls cross-batch dedupe
-  # and which gold partitions get recomputed.
   late_arrival_days: 3
-  # Window used for behavioural fraud features (account average spend etc.).
   feature_lookback_days: 30
   shuffle_partitions: 64
 
@@ -26,7 +17,7 @@ sources:
   customers:
     format: csv
     options: {header: "true"}
-    load_type: cdc            # change feed -> SCD Type 2 dimension
+    load_type: cdc
     schema: >-
       customer_id STRING, first_name STRING, last_name STRING, email STRING, phone STRING,
       city STRING, segment STRING, updated_at TIMESTAMP, _corrupt_record STRING
@@ -37,7 +28,7 @@ sources:
   accounts:
     format: csv
     options: {header: "true"}
-    load_type: snapshot       # full snapshot -> latest snapshot wins
+    load_type: snapshot
     schema: >-
       account_id STRING, customer_id STRING, account_type STRING, opened_date DATE,
       status STRING, _corrupt_record STRING
@@ -55,30 +46,25 @@ sources:
   transactions:
     format: json
     options: {}
-    load_type: incremental    # append-only event feed, processed per ingest_date
+    load_type: incremental
     schema: >-
       txn_id STRING, account_id STRING, merchant_id STRING, amount DECIMAL(18,2), currency STRING,
       channel STRING, status STRING, txn_ts TIMESTAMP, _corrupt_record STRING
     primary_key: [txn_id]
     event_ts_column: txn_ts
 
-# Columns are protected as soon as data lands in silver. Bronze is restricted-access raw.
 pii:
   customers:
-    hash: [email]                   # SHA-256, keeps joinability without exposing the value
-    mask: [phone]                   # keep last 4 digits
-    drop: [first_name, last_name]   # not needed downstream
+    hash: [email]
+    mask: [phone]
+    drop: [first_name, last_name]
 
-# Static FX table for converting to the reporting currency (GBP).
 fx_rates_to_gbp:
   GBP: 1.0
   USD: 0.79
   EUR: 0.85
   INR: 0.0094
 
-# Data quality rules. severity=error -> row is quarantined; severity=warn -> reported only.
-# max_error_rate is a circuit breaker: if more rows than this fail, the run stops before
-# bad data reaches silver.
 quality:
   transactions:
     max_error_rate: 0.05

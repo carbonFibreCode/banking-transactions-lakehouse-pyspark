@@ -5,7 +5,6 @@ import time
 
 import pytest
 
-# Naive datetimes in test data are interpreted in the local zone; pin it to match Spark's UTC.
 os.environ["TZ"] = "UTC"
 time.tzset()
 

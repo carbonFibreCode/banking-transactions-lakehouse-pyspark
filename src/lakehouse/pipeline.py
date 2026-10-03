@@ -1,8 +1,4 @@
-"""Pipeline entry point. Each stage can be run on its own (Airflow / Glue) or all together.
-
-python -m lakehouse.pipeline --run-date 2026-09-28 --stage all
-python -m lakehouse.pipeline --run-date 2026-09-28 --stage silver_transactions
-"""
+"""Pipeline entry point. Each stage can be run on its own (Airflow / Glue) or all together."""
 
 from __future__ import annotations
 

@@ -13,10 +13,10 @@ lint:
 test:
 	.venv/bin/pytest -q
 
-data:  ## generate DAYS days of synthetic landing data with TXNS transactions per day
+data:
 	$(PY) -m lakehouse.generate.synthetic --days $(DAYS) --txns-per-day $(TXNS)
 
-run:  ## run the full pipeline for every generated day, in order
+run:
 	@for d in $$(ls data/landing/transactions | sed 's/ingest_date=//' | sort); do \
 		echo "== $$d"; $(PY) -m lakehouse.pipeline --run-date $$d || exit 1; \
 	done

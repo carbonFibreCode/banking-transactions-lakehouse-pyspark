@@ -13,27 +13,18 @@ def get_spark(
 ) -> SparkSession:
     builder = (
         SparkSession.builder.appName(app_name)
-        # Adaptive Query Execution: coalesces small shuffle partitions and splits skewed
-        # join partitions at runtime.
         .config("spark.sql.adaptive.enabled", "true")
         .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
         .config("spark.sql.adaptive.skewJoin.enabled", "true")
         .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
-        # Only the partitions present in the written DataFrame are replaced, which makes
-        # every stage safely re-runnable for a given run date.
         .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
-        # Keep partition values (ingest_date, txn_date) as strings so filters behave the
-        # same whether a table was just written or read back from storage.
         .config("spark.sql.sources.partitionColumnTypeInference.enabled", "false")
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.sql.parquet.compression.codec", "snappy")
-        # stdout carries JSON logs only (CloudWatch-friendly); no console progress bars
         .config("spark.ui.showConsoleProgress", "false")
     )
     if master:
         builder = builder.master(master)
-    # Only takes effect when this process starts the JVM (local runs, tests). On Glue/EMR,
-    # memory is set by the cluster's worker type and spark-submit flags.
     builder = builder.config("spark.driver.memory", os.environ.get("LAKEHOUSE_DRIVER_MEMORY", "4g"))
     spark = builder.getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
@@ -64,12 +55,7 @@ def write_table(
 
 
 def replace_table(spark: SparkSession, df: DataFrame, path: str) -> None:
-    """Fully replace a table whose new content is derived from the table itself.
-
-    Spark cannot overwrite a Parquet path it is lazily reading from, so the result is staged
-    first. On a table format with ACID MERGE (Delta Lake / Iceberg) this becomes a single
-    MERGE statement.
-    """
+    """Fully replace a table whose new content is derived from the table itself."""
     staging = f"{path.rstrip('/')}__staging"
     df.write.mode("overwrite").parquet(staging)
     spark.read.parquet(staging).write.mode("overwrite").parquet(path)
