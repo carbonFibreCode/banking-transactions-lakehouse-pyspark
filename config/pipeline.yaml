@@ -1,0 +1,106 @@
+# Pipeline configuration. Adding a new source is a config change, not a code change:
+# declare it under `sources`, give it a load_type, and (optionally) quality rules.
+#
+# base_path can be a local folder or an S3 URI (s3://my-lake). Override at runtime with
+# the LAKEHOUSE_BASE_PATH environment variable or the --base-path CLI flag.
+
+base_path: data
+
+layers:
+  landing: landing
+  bronze: bronze
+  silver: silver
+  gold: gold
+  quarantine: quarantine
+  audit: audit
+
+processing:
+  # How many days back a transaction may arrive late. Controls cross-batch dedupe
+  # and which gold partitions get recomputed.
+  late_arrival_days: 3
+  # Window used for behavioural fraud features (account average spend etc.).
+  feature_lookback_days: 30
+  shuffle_partitions: 64
+
+sources:
+  customers:
+    format: csv
+    options: {header: "true"}
+    load_type: cdc            # change feed -> SCD Type 2 dimension
+    schema: >-
+      customer_id STRING, first_name STRING, last_name STRING, email STRING, phone STRING,
+      city STRING, segment STRING, updated_at TIMESTAMP, _corrupt_record STRING
+    primary_key: [customer_id]
+    scd2_tracked_columns: [email, phone, city, segment]
+    change_ts_column: updated_at
+
+  accounts:
+    format: csv
+    options: {header: "true"}
+    load_type: snapshot       # full snapshot -> latest snapshot wins
+    schema: >-
+      account_id STRING, customer_id STRING, account_type STRING, opened_date DATE,
+      status STRING, _corrupt_record STRING
+    primary_key: [account_id]
+
+  merchants:
+    format: csv
+    options: {header: "true"}
+    load_type: snapshot
+    schema: >-
+      merchant_id STRING, merchant_name STRING, merchant_category STRING, country STRING,
+      _corrupt_record STRING
+    primary_key: [merchant_id]
+
+  transactions:
+    format: json
+    options: {}
+    load_type: incremental    # append-only event feed, processed per ingest_date
+    schema: >-
+      txn_id STRING, account_id STRING, merchant_id STRING, amount DECIMAL(18,2), currency STRING,
+      channel STRING, status STRING, txn_ts TIMESTAMP, _corrupt_record STRING
+    primary_key: [txn_id]
+    event_ts_column: txn_ts
+
+# Columns are protected as soon as data lands in silver. Bronze is restricted-access raw.
+pii:
+  customers:
+    hash: [email]                   # SHA-256, keeps joinability without exposing the value
+    mask: [phone]                   # keep last 4 digits
+    drop: [first_name, last_name]   # not needed downstream
+
+# Static FX table for converting to the reporting currency (GBP).
+fx_rates_to_gbp:
+  GBP: 1.0
+  USD: 0.79
+  EUR: 0.85
+  INR: 0.0094
+
+# Data quality rules. severity=error -> row is quarantined; severity=warn -> reported only.
+# max_error_rate is a circuit breaker: if more rows than this fail, the run stops before
+# bad data reaches silver.
+quality:
+  transactions:
+    max_error_rate: 0.05
+    rules:
+      - {name: txn_required_fields, type: not_null, columns: [txn_id, account_id, amount, currency, txn_ts], severity: error}
+      - {name: txn_amount_positive, type: range, column: amount, min: 0.01, max: 1000000, severity: error}
+      - {name: txn_currency_valid, type: accepted_values, column: currency, values: [GBP, USD, EUR, INR], severity: error}
+      - {name: txn_channel_valid, type: accepted_values, column: channel, values: [CARD, ONLINE, ATM, TRANSFER], severity: error}
+      - {name: txn_account_exists, type: foreign_key, column: account_id, ref_table: accounts, ref_column: account_id, severity: error}
+      - {name: txn_merchant_known, type: foreign_key, column: merchant_id, ref_table: merchants, ref_column: merchant_id, severity: warn}
+      - {name: txn_not_future_dated, type: expression, expr: "txn_ts <= current_timestamp()", severity: error}
+
+  accounts:
+    max_error_rate: 0.01
+    rules:
+      - {name: acct_required_fields, type: not_null, columns: [account_id, customer_id], severity: error}
+      - {name: acct_unique, type: unique, columns: [account_id], severity: error}
+      - {name: acct_type_valid, type: accepted_values, column: account_type, values: [CURRENT, SAVINGS, CREDIT_CARD], severity: error}
+
+  customers:
+    max_error_rate: 0.01
+    rules:
+      - {name: cust_required_fields, type: not_null, columns: [customer_id, updated_at], severity: error}
+      - {name: cust_email_format, type: regex, column: email, pattern: "^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$", severity: warn}
+      - {name: cust_segment_valid, type: accepted_values, column: segment, values: [RETAIL, PREMIER, PRIVATE, BUSINESS], severity: error}

@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# generated data and Spark output
+data/
+spark-warehouse/
+metastore_db/
+derby.log
+
+# terraform
+infra/terraform/.terraform/
+infra/terraform/.terraform.lock.hcl
+infra/terraform/build/
+*.tfstate*
